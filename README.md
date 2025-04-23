@@ -1,6 +1,8 @@
 slowcat
 =======
 
+Update 2025. Modified slowcat to build on windows.
+
 The original `slowcat.c` was written by dave w capella to play old
 VT100 animations. It apparently used a simple empty loop to slow
 things down. Dave later modified it to use `nanosleep()` and that's
