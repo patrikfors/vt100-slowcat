@@ -16,18 +16,21 @@
  *  * (assuming that you have a personal bin directory)
  *
  * Usage vastly changed. "slowcat -h" will show usage now.
- *
+ * 
+ * Windows build
+ * * ansi support removed, didn't bother getting iconv stuff to work
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
-#include <iconv.h>
+
+#include "usleep.h"
+#include "getopt.h"
 
 int debug = 0;
-char version[] = "2021 Oct 02: third Eli the Bearded edition";
+char version[] = "2025 April 23: third Eli the Bearded edition - windows modification";
 
 void show_version(char *name) {
 	printf("%s version %s\n", name, version);
@@ -39,8 +42,6 @@ void usage(FILE *where, char *name) {
 	fprintf(where,"\t  slowcat -d USECONDS [ filename ... ]\n");
 
 	fprintf(where,"\nAdditional options:\n");
-	fprintf(where,"\t          -a         ANSI to Unicode conversion\n");
-	fprintf(where,"\t          -z         like -a, but stop at ^Z\n");
 	fprintf(where,"\t          -v         be more verbose\n");
 	fprintf(where,"\t          -V         show version\n");
 	fprintf(where,"\t          -h         show this help\n");
@@ -57,37 +58,20 @@ void usage(FILE *where, char *name) {
 	fprintf(where,"usecond value actually used at the end of the run.\n");
 }
 
-void delay(useconds_t);
-#define IN_BUF		2
-#define OUT_BUF		16
-#define IN_CHARSET	"437"
-#define OUT_CHARSET	"UTF-8"
+using useconds_t = __int64;
 
 int main(int argc, char **argv) {
-	int c, option, ansi;
+	int c, option;
 	useconds_t usecs = 100;
 	long baud;
 	FILE *fp;
 	char *fnam;
-	char inbuf[IN_BUF], outbuf[OUT_BUF];
-	char *inpt, *outpt;
-	size_t in, out;
-	iconv_t cd;
 
-	ansi = opterr = 0;
-
-	while ( (option = getopt(argc, argv, "b:d:azvVh")) != -1 ) {
+	opterr = 0;
+	while ( (option = getopt(argc, argv, "b:d:vVh")) != -1 ) {
 		switch (option) {
 			case 'v':
 				debug = 1;
-				break;
-
-			case 'a':
-				ansi = 1;
-				break;
-
-			case 'z':
-				ansi = 'z';
 				break;
 
 			case 'b':
@@ -125,13 +109,14 @@ int main(int argc, char **argv) {
 				usage(stdout, argv[0]);
 				exit(0);
 				break;
-		} /* switch */
-	} /* while */
+		}
+	}
 
-
+	setHighestTimerResolution(1);
+	
 	setbuf(stdout, NULL);
 
-        if ( optind != argc ) {
+    if ( optind != argc ) {
 		fnam = argv[optind++];
 		fp = fopen( fnam, "r");
 		if(fp == NULL) {
@@ -142,32 +127,12 @@ int main(int argc, char **argv) {
 		fp = stdin;
 	}
 
-	if(ansi) {
-		cd = iconv_open(OUT_CHARSET, IN_CHARSET);
-		if ((iconv_t)-1 == cd) {
-			fprintf(stderr,"ANSI iconv conversion unavailabl\n");
-			exit(2);
-		}
-	}
-
 	do {
 		setbuf(fp, NULL);
 
 		while ( (c = fgetc( fp )) != EOF ) {
-			if(ansi) {
-				if ((032 == c) && ('z' == ansi)) { break; }
-				in = 1;
-				out = OUT_BUF;
-				inbuf[0] = c;
-				inbuf[1] = 0;
-				inpt = inbuf;
-				outpt = outbuf;
-				iconv(cd, &inpt, &in, &outpt, &out);
-				fwrite(outbuf, (OUT_BUF - out), 1, stdout);
-			} else {
-				putchar(c);
-			}
-			delay(usecs);
+			putchar(c);
+			usleep(usecs);
 		}
 
 		fclose(fp);
@@ -185,21 +150,6 @@ int main(int argc, char **argv) {
 	if (debug) {
 		printf("\nDelay used: %lu useconds.\n", (unsigned long) usecs);
 	}
-	return (0);
-}
 
-/* So it turns out my old standby of usleep() is deprecated, and
- * nanosleep() is preferred. This lets either be used, and both are
- * better than the empty loop as the non-nanosleep alternative in
- * the original slowcat.c.
- * Precision isn't that important, so we dispense with frivolities
- * like checking for how long either sleep actually slept.
- */
-void delay(useconds_t usecs) {
-#if _POSIX_C_SOURCE >= 199309L
-	struct timespec ts = {0, (long)usecs * 1000};
-	nanosleep(&ts, NULL);
-#else
-	usleep(usecs);
-#endif
+	return (0);
 }
